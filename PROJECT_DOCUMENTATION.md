@@ -100,13 +100,21 @@ flowchart TD
 
 SyncLab verifies five formal mathematical invariants on every read and write cycle:
 
-$$\begin{aligned}
-\text{Invariant 1 (Reader-Writer Exclusion)} &: \quad N_{\text{active\_readers}} > 0 \implies \text{active\_writer} = -1 \\
-\text{Invariant 2 (Writer Mutual Exclusion)} &: \quad \text{active\_writer} \ge 0 \implies N_{\text{active\_readers}} = 0 \land N_{\text{active\_writers}} \le 1 \\
-\text{Invariant 3 (Reader Concurrency)}     &: \quad N_{\text{active\_readers}} \in [0, \text{MAX\_READERS}] \\
-\text{Invariant 4 (Monotonic Versioning)}   &: \quad v_{t+1} = v_t + 1 \quad \forall \text{ committed writes} \\
-\text{Invariant 5 (Lease Integrity)}        &: \quad \text{Thread } T \text{ accesses Register } R \iff T \in \text{LeaseHolderSet}(R)
-\end{aligned}$$
+| Invariant | Formal Definition | Operational Guarantee |
+|:---|:---|:---|
+| **Invariant 1: Reader-Writer Exclusion** | $N_{\text{readers}} > 0 \implies \text{active\_writer} = \varnothing$ | No reader may hold a read lease while a writer holds an exclusive write lease. |
+| **Invariant 2: Writer Mutual Exclusion** | $\text{active\_writer} \neq \varnothing \implies N_{\text{readers}} = 0 \land N_{\text{writers}} \le 1$ | At most one writer may access the shared resource at any given moment. |
+| **Invariant 3: Reader Concurrency** | $N_{\text{readers}} \in [0, \text{MAX\_READERS}]$ | Multiple compatible reader threads may access the shared register concurrently. |
+| **Invariant 4: Monotonic Versioning** | $v_{t+1} = v_t + 1 \quad (\forall \text{ committed writes})$ | Every committed write atomically increments the resource version counter ($v_1, v_2, \dots$). |
+| **Invariant 5: Lease Integrity** | $\text{Process } P \text{ accesses } R \iff P \in \text{LeaseHolders}(R)$ | Thread operations require an acquired lease; clean cancellation releases all leases. |
+
+$$
+\begin{aligned}
+\text{Safety Invariant 1 (Exclusion):} & \quad N_{\text{active\_readers}} > 0 \implies \text{writer} = \varnothing \\
+\text{Safety Invariant 2 (Mutex):}     & \quad \text{writer} \neq \varnothing \implies N_{\text{active\_readers}} = 0 \\
+\text{Safety Invariant 3 (Version):}   & \quad v_{t+1} = v_t + 1
+\end{aligned}
+$$
 
 If any thread breaches an invariant, the engine raises an `InvariantViolationError` and registers an audit flag immediately.
 
@@ -196,8 +204,12 @@ Worker threads execute in timed slices:
 2. If paused while in the critical section, the worker **retains its acquired lease** (`resource` or `read_count`), freezing its progress bar without releasing locks prematurely.
 3. When resumed, `Flag pause` signals workers to immediately resume execution.
 4. **Time Dilation:** Cumulative paused durations (`total_paused_sec`) are subtracted from monotonic execution timestamps:
-   $$\Delta t_{\text{effective}} = (t_{\text{now}} - t_{\text{start}}) - t_{\text{total\_paused}}$$
-   This ensures throughput, operation duration, and waiting-time metrics remain mathematically unskewed.
+
+$$
+\Delta t_{\text{effective}} = (t_{\text{now}} - t_{\text{start}}) - t_{\text{total\_paused}}
+$$
+
+This ensures throughput, operation duration, and waiting-time metrics remain mathematically unskewed.
 
 ---
 
@@ -205,15 +217,31 @@ Worker threads execute in timed slices:
 
 SyncLab continuously computes and streams empirical synchronization metrics:
 
-### 1. Average Reader / Writer Wait Time ($W_{\text{avg}}$)
-$$W_{\text{avg}} = \frac{1}{N} \sum_{i=1}^{N} \left( t_{\text{admitted}, i} - t_{\text{requested}, i} \right)$$
+### 1. Average Wait Time (W_avg)
 
-### 2. Resource Occupancy Percentage ($\Omega$)
-$$\Omega = \left( \frac{\text{Total Time Resource was held by at least one Reader or Writer}}{\text{Total Elapsed Simulation Time}} \right) \times 100\%$$
+The average duration threads spend waiting in queue before receiving admission:
+
+$$
+W_{\text{avg}} = \frac{1}{N} \sum_{i=1}^{N} \left( t_{\text{admitted}, i} - t_{\text{requested}, i} \right)
+$$
+
+### 2. Resource Occupancy Percentage (Ω)
+
+The percentage of time the shared register was held by at least one active thread:
+
+$$
+\Omega = \left( \frac{T_{\text{occupied}}}{T_{\text{elapsed}}} \right) \times 100\%
+$$
+
+Where $T_{\text{occupied}}$ denotes total elapsed time with active readers ($N_{\text{readers}} > 0$) or an active writer.
 
 ### 3. Starvation Detection Heuristic
-A starvation warning flag is triggered if:
-$$\text{Max Writer Wait Time} > 3 \times \text{Average Reader Wait Time} \quad \land \quad N_{\text{waiting\_writers}} > 0$$
+
+A starvation warning flag is triggered if writer waiting delay significantly outpaces reader service times:
+
+$$
+\text{MaxWriterWait} > 3 \times \text{AvgReaderWait} \quad \land \quad N_{\text{waiting\_writers}} > 0
+$$
 
 ---
 
