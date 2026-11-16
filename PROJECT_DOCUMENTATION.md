@@ -102,16 +102,16 @@ SyncLab verifies five formal mathematical invariants on every read and write cyc
 
 | Invariant | Formal Definition | Operational Guarantee |
 |:---|:---|:---|
-| **Invariant 1: Reader-Writer Exclusion** | $N_{\text{readers}} > 0 \implies \text{active\_writer} = \varnothing$ | No reader may hold a read lease while a writer holds an exclusive write lease. |
-| **Invariant 2: Writer Mutual Exclusion** | $\text{active\_writer} \neq \varnothing \implies N_{\text{readers}} = 0 \land N_{\text{writers}} \le 1$ | At most one writer may access the shared resource at any given moment. |
-| **Invariant 3: Reader Concurrency** | $N_{\text{readers}} \in [0, \text{MAX\_READERS}]$ | Multiple compatible reader threads may access the shared register concurrently. |
+| **Invariant 1: Reader-Writer Exclusion** | $N_{\text{readers}} > 0 \implies W_{\text{active}} = \varnothing$ | No reader may hold a read lease while a writer holds an exclusive write lease. |
+| **Invariant 2: Writer Mutual Exclusion** | $W_{\text{active}} \neq \varnothing \implies N_{\text{readers}} = 0 \land N_{\text{writers}} \le 1$ | At most one writer may access the shared resource at any given moment. |
+| **Invariant 3: Reader Concurrency** | $N_{\text{readers}} \in [0, N_{\max}]$ | Multiple compatible reader threads may access the shared register concurrently ($N_{\max} = 100$). |
 | **Invariant 4: Monotonic Versioning** | $v_{t+1} = v_t + 1 \quad (\forall \text{ committed writes})$ | Every committed write atomically increments the resource version counter ($v_1, v_2, \dots$). |
 | **Invariant 5: Lease Integrity** | $\text{Process } P \text{ accesses } R \iff P \in \text{LeaseHolders}(R)$ | Thread operations require an acquired lease; clean cancellation releases all leases. |
 
 $$
 \begin{aligned}
-\text{Safety Invariant 1 (Exclusion):} & \quad N_{\text{active\_readers}} > 0 \implies \text{writer} = \varnothing \\
-\text{Safety Invariant 2 (Mutex):}     & \quad \text{writer} \neq \varnothing \implies N_{\text{active\_readers}} = 0 \\
+\text{Safety Invariant 1 (Exclusion):} & \quad N_{\text{readers}} > 0 \implies W_{\text{active}} = \varnothing \\
+\text{Safety Invariant 2 (Mutex):}     & \quad W_{\text{active}} \neq \varnothing \implies N_{\text{readers}} = 0 \\
 \text{Safety Invariant 3 (Version):}   & \quad v_{t+1} = v_t + 1
 \end{aligned}
 $$
@@ -206,7 +206,7 @@ Worker threads execute in timed slices:
 4. **Time Dilation:** Cumulative paused durations (`total_paused_sec`) are subtracted from monotonic execution timestamps:
 
 $$
-\Delta t_{\text{effective}} = (t_{\text{now}} - t_{\text{start}}) - t_{\text{total\_paused}}
+\Delta t_{\text{effective}} = (t_{\text{now}} - t_{\text{start}}) - t_{\text{paused}}
 $$
 
 This ensures throughput, operation duration, and waiting-time metrics remain mathematically unskewed.
@@ -240,7 +240,7 @@ Where $T_{\text{occupied}}$ denotes total elapsed time with active readers ($N_{
 A starvation warning flag is triggered if writer waiting delay significantly outpaces reader service times:
 
 $$
-\text{MaxWriterWait} > 3 \times \text{AvgReaderWait} \quad \land \quad N_{\text{waiting\_writers}} > 0
+\text{MaxWriterWait} > 3 \times \text{AvgReaderWait} \quad \land \quad N_{\text{waiting}} > 0
 $$
 
 ---
